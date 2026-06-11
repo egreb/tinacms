@@ -3,12 +3,7 @@ import type { Database } from '@tinacms/graphql';
 import react from '@vitejs/plugin-react';
 import fs from 'fs-extra';
 import normalizePath from 'normalize-path';
-import {
-  type BuildOptions,
-  type InlineConfig,
-  type Plugin,
-  splitVendorChunkPlugin,
-} from 'vite';
+import type { BuildOptions, InlineConfig, Plugin } from 'vite';
 import type { ConfigManager } from '../config-manager';
 import { buildCorsOriginCheck } from './cors';
 import { filterPublicEnv } from './filterPublicEnv';
@@ -239,21 +234,33 @@ export const createConfig = async ({
       sourcemap: false,
       outDir: configManager.outputFolderPath,
       emptyOutDir: true,
-      rollupOptions: rollupOptions,
+      rollupOptions: {
+        ...rollupOptions,
+        output: Array.isArray(rollupOptions?.output)
+          ? rollupOptions.output
+          : {
+              /**
+               * Splitting vendor code into its own chunk is needed because `tinacms`
+               * is quite large, and Vite's default chunking strategy chokes on memory
+               * issues for smaller machines (ie. on CI). This replaces the
+               * `splitVendorChunkPlugin` that was removed in Vite 6.
+               */
+              manualChunks(id) {
+                if (id.includes('node_modules')) {
+                  return 'vendor';
+                }
+              },
+              ...rollupOptions?.output,
+            },
+      },
     },
     plugins: [
-      /**
-       * `splitVendorChunkPlugin` is needed because `tinacms` is quite large,
-       * Vite's chunking strategy chokes on memory issues for smaller machines (ie. on CI).
-       */
       react({
         babel: {
           // Supresses the warning [NOTE] babel The code generator has deoptimised the styling of
           compact: true,
         },
-        fastRefresh: false,
       }),
-      splitVendorChunkPlugin(),
       tinaTailwind(configManager.spaRootPath, configManager.prebuildFilePath),
       ...plugins,
     ],
